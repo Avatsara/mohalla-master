@@ -114,11 +114,6 @@ round_score = base_score + time_bonus
 Max per round: **1 200 pts** (bull's-eye + full time bonus).  
 Max total (5 rounds): **6 000 pts**.
 
----
-
-## Capstone Info
-
-**Mohalla Master** — B.Tech Computer Science & Engineering Capstone  
 Academic Year 2025–26
 
 **References**
