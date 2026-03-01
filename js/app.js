@@ -12,6 +12,7 @@ const App = (() => {
   const MAP_ZOOM_GAME = 16; // gameplay zoom (slightly easier)
   const MAP_ZOOM_RESULT = 16;
   const LOCATION_LOG_STORAGE_KEY = 'mohalla_location_logs';
+  const LOCATION_LOG_STATUS_KEY = 'mohalla_location_log_last_status';
   const LOCATION_LOG_MAX_ENTRIES = 300;
   const LOCATION_LOG_ENDPOINT = window.MOHALLA_LOCATION_LOG_ENDPOINT || '/api/location-log';
 
@@ -480,23 +481,44 @@ const App = (() => {
     if (!LOCATION_LOG_ENDPOINT) return;
     const body = JSON.stringify(payload);
 
-    if (navigator.sendBeacon) {
-      try {
-        const blob = new Blob([body], { type: 'application/json' });
-        navigator.sendBeacon(LOCATION_LOG_ENDPOINT, blob);
-        return;
-      } catch (_) {
-        // Fall through to fetch.
-      }
-    }
-
     fetch(LOCATION_LOG_ENDPOINT, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body,
       keepalive: true,
-      mode: 'no-cors',
-    }).catch(() => {});
+    })
+      .then((resp) => {
+        if (!resp.ok) throw new Error(`http_${resp.status}`);
+        setLocationLogStatus('delivered', 'fetch');
+      })
+      .catch((err) => {
+        if (navigator.sendBeacon) {
+          try {
+            const blob = new Blob([body], { type: 'application/json' });
+            const ok = navigator.sendBeacon(LOCATION_LOG_ENDPOINT, blob);
+            if (ok) {
+              setLocationLogStatus('delivered', 'sendBeacon');
+              return;
+            }
+          } catch (_) {
+            // Ignore fallback errors.
+          }
+        }
+        setLocationLogStatus('failed', err?.message || 'network_error');
+      });
+  }
+
+  function setLocationLogStatus(status, transport) {
+    try {
+      localStorage.setItem(LOCATION_LOG_STATUS_KEY, JSON.stringify({
+        status,
+        transport,
+        endpoint: LOCATION_LOG_ENDPOINT,
+        at: new Date().toISOString(),
+      }));
+    } catch (_) {
+      // Ignore status write errors.
+    }
   }
 
   function setStatus(el, type, msg) {
