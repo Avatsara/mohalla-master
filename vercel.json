@@ -2,6 +2,7 @@
   "version": 2,
   "name": "mohalla-master",
   "builds": [
+    { "src": "api/**/*.js", "use": "@vercel/node" },
     { "src": "index.html", "use": "@vercel/static" },
     { "src": "css/**",     "use": "@vercel/static" },
     { "src": "js/**",      "use": "@vercel/static" }

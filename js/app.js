@@ -13,7 +13,7 @@ const App = (() => {
   const MAP_ZOOM_RESULT = 16;
   const LOCATION_LOG_STORAGE_KEY = 'mohalla_location_logs';
   const LOCATION_LOG_MAX_ENTRIES = 300;
-  const LOCATION_LOG_ENDPOINT = window.MOHALLA_LOCATION_LOG_ENDPOINT || '';
+  const LOCATION_LOG_ENDPOINT = window.MOHALLA_LOCATION_LOG_ENDPOINT || '/api/location-log';
 
   /* ─── State ─── */
   let userLat, userLon;
@@ -445,7 +445,7 @@ const App = (() => {
   }
 
   /* ─── Helpers ─── */
-  // Store coarse location events for product analytics; optionally forward to backend endpoint.
+  // Store location events for product analytics; optionally forward to backend endpoint.
   function logLocationEvent(eventData) {
     const payload = {
       ...eventData,
@@ -454,13 +454,6 @@ const App = (() => {
       locale: navigator.language || '',
       userAgent: navigator.userAgent || '',
     };
-
-    if (typeof payload.latitude === 'number') {
-      payload.latitude = Number(payload.latitude.toFixed(3));
-    }
-    if (typeof payload.longitude === 'number') {
-      payload.longitude = Number(payload.longitude.toFixed(3));
-    }
 
     storeLocationEvent(payload);
     sendLocationEvent(payload);
