@@ -8,9 +8,12 @@ const App = (() => {
 
   /* ─── Config ─── */
   const TOTAL_ROUNDS  = 5;
-  const ROUND_TIME    = 30; // seconds per round
-  const MAP_ZOOM_GAME = 15; // zoom for gameplay (hides fine detail)
+  const ROUND_TIME    = 40; // seconds per round (slightly easier)
+  const MAP_ZOOM_GAME = 16; // gameplay zoom (slightly easier)
   const MAP_ZOOM_RESULT = 16;
+  const LOCATION_LOG_STORAGE_KEY = 'mohalla_location_logs';
+  const LOCATION_LOG_MAX_ENTRIES = 300;
+  const LOCATION_LOG_ENDPOINT = window.MOHALLA_LOCATION_LOG_ENDPOINT || '/api/location-log';
 
   /* ─── State ─── */
   let userLat, userLon;
@@ -67,6 +70,12 @@ const App = (() => {
     userLat = pos.coords.latitude;
     userLon = pos.coords.longitude;
     const acc = Math.round(pos.coords.accuracy);
+    logLocationEvent({
+      event: 'location_granted',
+      latitude: userLat,
+      longitude: userLon,
+      accuracyM: acc,
+    });
 
     setStatus(status, 'success', `✅ Location found — ±${acc}m accuracy. Fetching landmarks…`);
     btn.querySelector('.btn-text').textContent = 'Loading…';
@@ -85,6 +94,11 @@ const App = (() => {
       2: '📡 Position unavailable. Make sure GPS is enabled and you have a network connection.',
       3: '⏱ Location timed out. Try stepping outside or moving to a window.',
     };
+    logLocationEvent({
+      event: 'location_error',
+      code: err.code ?? 0,
+      message: err.message || '',
+    });
     setStatus(status, 'error', msgs[err.code] || 'Unknown error. Please try again.');
   }
 
@@ -176,8 +190,8 @@ const App = (() => {
     document.getElementById('map-hint').style.display     = 'block';
 
     // Re-centre map (without showing POI location)
-    const jitterLat = userLat + (Math.random() - 0.5) * 0.003;
-    const jitterLon = userLon + (Math.random() - 0.5) * 0.003;
+    const jitterLat = userLat + (Math.random() - 0.5) * 0.0018;
+    const jitterLon = userLon + (Math.random() - 0.5) * 0.0018;
     map.setView([jitterLat, jitterLon], MAP_ZOOM_GAME);
 
     // Start timer
@@ -431,6 +445,60 @@ const App = (() => {
   }
 
   /* ─── Helpers ─── */
+  // Store location events for product analytics; optionally forward to backend endpoint.
+  function logLocationEvent(eventData) {
+    const payload = {
+      ...eventData,
+      capturedAt: new Date().toISOString(),
+      timezone: Intl.DateTimeFormat().resolvedOptions().timeZone || '',
+      locale: navigator.language || '',
+      userAgent: navigator.userAgent || '',
+    };
+
+    storeLocationEvent(payload);
+    sendLocationEvent(payload);
+  }
+
+  function storeLocationEvent(payload) {
+    try {
+      const raw = localStorage.getItem(LOCATION_LOG_STORAGE_KEY);
+      const events = raw ? JSON.parse(raw) : [];
+      if (!Array.isArray(events)) return;
+
+      events.push(payload);
+      if (events.length > LOCATION_LOG_MAX_ENTRIES) {
+        events.splice(0, events.length - LOCATION_LOG_MAX_ENTRIES);
+      }
+
+      localStorage.setItem(LOCATION_LOG_STORAGE_KEY, JSON.stringify(events));
+    } catch (_) {
+      // Ignore analytics storage errors.
+    }
+  }
+
+  function sendLocationEvent(payload) {
+    if (!LOCATION_LOG_ENDPOINT) return;
+    const body = JSON.stringify(payload);
+
+    if (navigator.sendBeacon) {
+      try {
+        const blob = new Blob([body], { type: 'application/json' });
+        navigator.sendBeacon(LOCATION_LOG_ENDPOINT, blob);
+        return;
+      } catch (_) {
+        // Fall through to fetch.
+      }
+    }
+
+    fetch(LOCATION_LOG_ENDPOINT, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body,
+      keepalive: true,
+      mode: 'no-cors',
+    }).catch(() => {});
+  }
+
   function setStatus(el, type, msg) {
     el.textContent  = msg;
     el.className    = 'location-status' + (type ? ` ${type}` : '');
