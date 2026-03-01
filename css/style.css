@@ -158,24 +158,6 @@ html, body {
   animation: fade-up 0.7s 0.15s ease both;
 }
 
-/* Permission note */
-.permission-note {
-  display: flex;
-  gap: 1rem;
-  align-items: flex-start;
-  background: rgba(255,107,0,0.07);
-  border: 1px solid rgba(255,107,0,0.2);
-  border-radius: var(--radius);
-  padding: 1rem 1.25rem;
-  margin-bottom: 2rem;
-  font-size: 0.75rem;
-  line-height: 1.7;
-  color: var(--sand);
-  animation: fade-up 0.7s 0.25s ease both;
-}
-.perm-icon { font-size: 1.3rem; flex-shrink: 0; }
-.permission-note strong { color: var(--cream); display: block; margin-bottom: 0.2rem; }
-
 /* Buttons */
 .btn-primary {
   display: inline-flex;
