@@ -467,7 +467,7 @@ const App = (() => {
 
     // Reset button
     const btn = document.getElementById('btn-start');
-    btn.querySelector('.btn-text').textContent = 'Share Location & Play';
+    btn.querySelector('.btn-text').textContent = 'Let's Begin the Mohalla Challenge';
     btn.disabled = false;
     document.getElementById('location-status').classList.add('hidden');
 
