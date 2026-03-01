@@ -21,6 +21,7 @@ const App = (() => {
 
   /* ─── State ─── */
   let userLat, userLon;
+  let userAccuracyM = null;
   let allPOIs       = [];
   let usedPOIs      = new Set();
   let currentPOI    = null;
@@ -32,6 +33,8 @@ const App = (() => {
   let timeLeft      = ROUND_TIME;
   let map           = null;
   let resultMap     = null;
+  let userLocationMarker = null;
+  let userLocationAccuracyCircle = null;
   let logRetryTimer = null;
 
   /* ─── Screen management ─── */
@@ -74,6 +77,7 @@ const App = (() => {
 
     userLat = pos.coords.latitude;
     userLon = pos.coords.longitude;
+    userAccuracyM = pos.coords.accuracy;
     const acc = Math.round(pos.coords.accuracy);
     logLocationEvent({
       event: 'location_granted',
@@ -151,6 +155,8 @@ const App = (() => {
 
   function initMap() {
     if (map) { map.remove(); map = null; }
+    userLocationMarker = null;
+    userLocationAccuracyCircle = null;
 
     map = L.map('map', {
       zoomControl: false,
@@ -168,8 +174,47 @@ const App = (() => {
       .addAttribution('© <a href="https://openstreetmap.org/copyright">OpenStreetMap</a> contributors, © <a href="https://carto.com">CARTO</a>')
       .addTo(map);
 
+    addUserReferenceLayer();
+
     // On map click: place guess pin
     map.on('click', onMapClick);
+  }
+
+  function addUserReferenceLayer() {
+    if (!map || !Number.isFinite(userLat) || !Number.isFinite(userLon)) return;
+
+    const gpsIcon = L.divIcon({
+      className: '',
+      html: `<div style="
+        width:20px; height:20px;
+        background:#29B6F6;
+        border:3px solid #E1F5FE;
+        border-radius:50%;
+        box-shadow:0 0 0 6px rgba(41,182,246,0.2), 0 3px 10px rgba(0,0,0,0.55);
+      "></div>`,
+      iconSize: [20, 20],
+      iconAnchor: [10, 10],
+    });
+
+    userLocationMarker = L.marker([userLat, userLon], {
+      icon: gpsIcon,
+      interactive: false,
+      keyboard: false,
+      zIndexOffset: 500,
+    }).addTo(map);
+
+    if (Number.isFinite(userAccuracyM)) {
+      const radius = Math.min(Math.max(userAccuracyM, 15), 140);
+      userLocationAccuracyCircle = L.circle([userLat, userLon], {
+        radius,
+        color: '#29B6F6',
+        weight: 1,
+        opacity: 0.85,
+        fillColor: '#29B6F6',
+        fillOpacity: 0.08,
+        interactive: false,
+      }).addTo(map);
+    }
   }
 
   function startRound() {
@@ -417,6 +462,8 @@ const App = (() => {
     usedPOIs.clear();
     if (map) { map.remove(); map = null; }
     if (resultMap) { resultMap.remove(); resultMap = null; }
+    userLocationMarker = null;
+    userLocationAccuracyCircle = null;
 
     // Reset button
     const btn = document.getElementById('btn-start');
@@ -630,8 +677,8 @@ const App = (() => {
     const hintEl = document.getElementById('map-hint');
     const hintText = buildRoundHint(poi);
     hintEl.textContent = hintText
-      ? `📌 Tap where you think it is • Hint: ${hintText}`
-      : '📌 Tap where you think this place is';
+      ? `📌 Tap where you think it is • 🔵 Blue pin = your GPS start • Hint: ${hintText}`
+      : '📌 Tap where you think this place is • 🔵 Blue pin = your GPS start';
   }
 
   function bearingDegrees(lat1, lon1, lat2, lon2) {
