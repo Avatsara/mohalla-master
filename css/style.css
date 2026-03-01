@@ -285,11 +285,16 @@ html, body {
 }
 .poi-label {
   font-family: 'Playfair Display', serif;
-  font-size: clamp(0.95rem, 3vw, 1.25rem);
+  font-size: clamp(0.9rem, 2.6vw, 1.18rem);
   font-weight: 700;
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
+  white-space: normal;
+  overflow: visible;
+  text-overflow: clip;
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+  line-height: 1.15;
+  max-height: 2.3em;
   color: var(--cream);
 }
 .poi-type {
@@ -300,16 +305,6 @@ html, body {
   opacity: 0.7;
   margin-top: 0.15rem;
 }
-.poi-hint {
-  margin-top: 0.22rem;
-  font-size: 0.62rem;
-  color: var(--sand);
-  opacity: 0.9;
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
-}
-
 .hud-right { flex-shrink: 0; }
 .timer-wrap {
   position: relative;
@@ -349,9 +344,12 @@ html, body {
   border: 1px solid rgba(255,107,0,0.3);
   color: var(--cream);
   font-size: 0.75rem;
-  padding: 0.6rem 1.25rem;
+  padding: 0.62rem 1rem;
   border-radius: 100px;
-  white-space: nowrap;
+  text-align: center;
+  white-space: normal;
+  max-width: min(90vw, 520px);
+  line-height: 1.35;
   z-index: 500;
   pointer-events: none;
   animation: hint-fade 0.5s ease;

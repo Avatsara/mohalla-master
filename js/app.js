@@ -174,7 +174,10 @@ const App = (() => {
 
   function startRound() {
     currentRound++;
-    guessMarker = null;
+    if (guessMarker) {
+      map.removeLayer(guessMarker);
+      guessMarker = null;
+    }
 
     // Pick a random unused POI
     const available = allPOIs.filter(p => !usedPOIs.has(p.id));
@@ -191,19 +194,11 @@ const App = (() => {
     document.getElementById('hud-score').textContent  = totalScore;
     document.getElementById('hud-poi-name').textContent = `${currentPOI.emoji} ${currentPOI.name}`;
     document.getElementById('hud-poi-type').textContent  = currentPOI.type;
-    const hintEl = document.getElementById('hud-poi-hint');
-    const areaHint = currentPOI.hint || currentPOI.address || '';
-    if (areaHint) {
-      hintEl.textContent = `Hint: ${areaHint}`;
-      hintEl.classList.remove('hidden');
-    } else {
-      hintEl.textContent = '';
-      hintEl.classList.add('hidden');
-    }
 
     // Hide confirm
     document.getElementById('confirm-wrap').style.display = 'none';
-    document.getElementById('map-hint').style.display     = 'block';
+    document.getElementById('map-hint').style.display = 'block';
+    updateMapHint(currentPOI);
 
     // Re-centre map (without showing POI location)
     const jitterLat = userLat + (Math.random() - 0.5) * 0.0018;
@@ -244,7 +239,8 @@ const App = (() => {
   function cancelPin() {
     if (guessMarker) { map.removeLayer(guessMarker); guessMarker = null; }
     document.getElementById('confirm-wrap').style.display = 'none';
-    document.getElementById('map-hint').style.display     = 'block';
+    document.getElementById('map-hint').style.display = 'block';
+    updateMapHint(currentPOI);
   }
 
   function submitGuess() {
@@ -609,6 +605,48 @@ const App = (() => {
     } catch (_) {
       // Ignore status write errors.
     }
+  }
+
+  function buildRoundHint(poi) {
+    const areaHint = (poi.hint || poi.address || '').trim();
+    if (areaHint) return areaHint;
+
+    if (!Number.isFinite(userLat) || !Number.isFinite(userLon)) {
+      return 'Somewhere nearby';
+    }
+
+    const distM = Scoring.distanceMetres(userLat, userLon, poi.lat, poi.lon);
+    const distLabel = distM < 1000
+      ? `${Math.round(distM)} m`
+      : `${(distM / 1000).toFixed(1)} km`;
+    const direction = bearingToCompass(
+      bearingDegrees(userLat, userLon, poi.lat, poi.lon)
+    );
+
+    return `About ${distLabel} ${direction} of your location`;
+  }
+
+  function updateMapHint(poi) {
+    const hintEl = document.getElementById('map-hint');
+    const hintText = buildRoundHint(poi);
+    hintEl.textContent = hintText
+      ? `📌 Tap where you think it is • Hint: ${hintText}`
+      : '📌 Tap where you think this place is';
+  }
+
+  function bearingDegrees(lat1, lon1, lat2, lon2) {
+    const phi1 = lat1 * Math.PI / 180;
+    const phi2 = lat2 * Math.PI / 180;
+    const dLambda = (lon2 - lon1) * Math.PI / 180;
+    const y = Math.sin(dLambda) * Math.cos(phi2);
+    const x = Math.cos(phi1) * Math.sin(phi2) -
+      Math.sin(phi1) * Math.cos(phi2) * Math.cos(dLambda);
+    return (Math.atan2(y, x) * 180 / Math.PI + 360) % 360;
+  }
+
+  function bearingToCompass(bearing) {
+    const points = ['N', 'NE', 'E', 'SE', 'S', 'SW', 'W', 'NW'];
+    return points[Math.round(bearing / 45) % 8];
   }
 
   function setStatus(el, type, msg) {
