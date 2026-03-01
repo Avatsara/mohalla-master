@@ -12,7 +12,11 @@ const App = (() => {
   const MAP_ZOOM_GAME = 16; // gameplay zoom (slightly easier)
   const MAP_ZOOM_RESULT = 16;
   const LOCATION_LOG_STORAGE_KEY = 'mohalla_location_logs';
+  const LOCATION_LOG_STATUS_KEY = 'mohalla_location_log_last_status';
+  const LOCATION_LOG_QUEUE_KEY = 'mohalla_location_log_pending';
   const LOCATION_LOG_MAX_ENTRIES = 300;
+  const LOCATION_LOG_MAX_PENDING = 120;
+  const LOCATION_LOG_RETRY_DELAY_MS = 6000;
   const LOCATION_LOG_ENDPOINT = window.MOHALLA_LOCATION_LOG_ENDPOINT || '/api/location-log';
 
   /* ─── State ─── */
@@ -28,6 +32,7 @@ const App = (() => {
   let timeLeft      = ROUND_TIME;
   let map           = null;
   let resultMap     = null;
+  let logRetryTimer = null;
 
   /* ─── Screen management ─── */
   function showScreen(id) {
@@ -74,6 +79,8 @@ const App = (() => {
       event: 'location_granted',
       latitude: userLat,
       longitude: userLon,
+      latitudeRaw: String(userLat),
+      longitudeRaw: String(userLon),
       accuracyM: acc,
     });
 
@@ -184,6 +191,15 @@ const App = (() => {
     document.getElementById('hud-score').textContent  = totalScore;
     document.getElementById('hud-poi-name').textContent = `${currentPOI.emoji} ${currentPOI.name}`;
     document.getElementById('hud-poi-type').textContent  = currentPOI.type;
+    const hintEl = document.getElementById('hud-poi-hint');
+    const areaHint = currentPOI.hint || currentPOI.address || '';
+    if (areaHint) {
+      hintEl.textContent = `Hint: ${areaHint}`;
+      hintEl.classList.remove('hidden');
+    } else {
+      hintEl.textContent = '';
+      hintEl.classList.add('hidden');
+    }
 
     // Hide confirm
     document.getElementById('confirm-wrap').style.display = 'none';
@@ -449,6 +465,7 @@ const App = (() => {
   function logLocationEvent(eventData) {
     const payload = {
       ...eventData,
+      logId: makeLogId(),
       capturedAt: new Date().toISOString(),
       timezone: Intl.DateTimeFormat().resolvedOptions().timeZone || '',
       locale: navigator.language || '',
@@ -456,7 +473,7 @@ const App = (() => {
     };
 
     storeLocationEvent(payload);
-    sendLocationEvent(payload);
+    void sendLocationEvent(payload);
   }
 
   function storeLocationEvent(payload) {
@@ -476,27 +493,122 @@ const App = (() => {
     }
   }
 
-  function sendLocationEvent(payload) {
-    if (!LOCATION_LOG_ENDPOINT) return;
-    const body = JSON.stringify(payload);
-
-    if (navigator.sendBeacon) {
-      try {
-        const blob = new Blob([body], { type: 'application/json' });
-        navigator.sendBeacon(LOCATION_LOG_ENDPOINT, blob);
-        return;
-      } catch (_) {
-        // Fall through to fetch.
-      }
+  async function sendLocationEvent(payload) {
+    if (!LOCATION_LOG_ENDPOINT) {
+      setLocationLogStatus('disabled', 'none');
+      return false;
     }
 
-    fetch(LOCATION_LOG_ENDPOINT, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body,
-      keepalive: true,
-      mode: 'no-cors',
-    }).catch(() => {});
+    const body = JSON.stringify(payload);
+
+    try {
+      const resp = await fetch(LOCATION_LOG_ENDPOINT, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body,
+        keepalive: true,
+      });
+      if (!resp.ok) throw new Error(`http_${resp.status}`);
+      clearPendingLocationEvent(payload.logId);
+      setLocationLogStatus('delivered', 'fetch');
+      return true;
+    } catch (err) {
+      if (navigator.sendBeacon) {
+        try {
+          const blob = new Blob([body], { type: 'application/json' });
+          const ok = navigator.sendBeacon(LOCATION_LOG_ENDPOINT, blob);
+          if (ok) {
+            clearPendingLocationEvent(payload.logId);
+            setLocationLogStatus('delivered', 'sendBeacon');
+            return true;
+          }
+        } catch (_) {
+          // Ignore fallback errors.
+        }
+      }
+
+      queuePendingLocationEvent(payload);
+      setLocationLogStatus('queued', err?.message || 'network_error');
+      schedulePendingLogRetry();
+      return false;
+    }
+  }
+
+  async function flushPendingLocationEvents() {
+    const pending = getPendingLocationEvents();
+    if (!pending.length) return;
+
+    for (const event of pending) {
+      // Stop on first failed send; retry will continue later.
+      const sent = await sendLocationEvent(event);
+      if (!sent) return;
+    }
+  }
+
+  function schedulePendingLogRetry() {
+    if (logRetryTimer) return;
+    logRetryTimer = setTimeout(() => {
+      logRetryTimer = null;
+      void flushPendingLocationEvents();
+    }, LOCATION_LOG_RETRY_DELAY_MS);
+  }
+
+  function queuePendingLocationEvent(payload) {
+    try {
+      const pending = getPendingLocationEvents();
+      if (pending.some(item => item.logId === payload.logId)) return;
+      pending.push(payload);
+      if (pending.length > LOCATION_LOG_MAX_PENDING) {
+        pending.splice(0, pending.length - LOCATION_LOG_MAX_PENDING);
+      }
+      localStorage.setItem(LOCATION_LOG_QUEUE_KEY, JSON.stringify(pending));
+    } catch (_) {
+      // Ignore queue storage errors.
+    }
+  }
+
+  function clearPendingLocationEvent(logId) {
+    if (!logId) return;
+    try {
+      const pending = getPendingLocationEvents().filter(item => item.logId !== logId);
+      localStorage.setItem(LOCATION_LOG_QUEUE_KEY, JSON.stringify(pending));
+    } catch (_) {
+      // Ignore queue storage errors.
+    }
+  }
+
+  function getPendingLocationEvents() {
+    try {
+      const raw = localStorage.getItem(LOCATION_LOG_QUEUE_KEY);
+      const parsed = raw ? JSON.parse(raw) : [];
+      return Array.isArray(parsed) ? parsed : [];
+    } catch (_) {
+      return [];
+    }
+  }
+
+  function initLocationLogDelivery() {
+    if (typeof window === 'undefined') return;
+    window.addEventListener('online', () => void flushPendingLocationEvents());
+    setTimeout(() => void flushPendingLocationEvents(), 1200);
+  }
+
+  function makeLogId() {
+    return `${Date.now()}-${Math.random().toString(36).slice(2, 10)}`;
+  }
+
+  function setLocationLogStatus(status, transport) {
+    try {
+      localStorage.setItem(LOCATION_LOG_STATUS_KEY, JSON.stringify({
+        status,
+        transport,
+        endpoint: LOCATION_LOG_ENDPOINT,
+        pendingCount: getPendingLocationEvents().length,
+        at: new Date().toISOString(),
+      }));
+    } catch (_) {
+      // Ignore status write errors.
+    }
   }
 
   function setStatus(el, type, msg) {
@@ -506,6 +618,8 @@ const App = (() => {
   }
 
   function sleep(ms) { return new Promise(r => setTimeout(r, ms)); }
+
+  initLocationLogDelivery();
 
   /* ─── Public API ─── */
   return {
