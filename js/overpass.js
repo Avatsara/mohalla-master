@@ -90,6 +90,7 @@ const Overpass = (() => {
             type: label,
             emoji,
             address: buildAddress(el.tags),
+            hint: buildHint(el.tags),
             tags: el.tags,
           });
         }
@@ -110,6 +111,41 @@ const Overpass = (() => {
       parts.push(tags['addr:locality'] || tags['addr:city']);
     }
     return parts.join(', ');
+  }
+
+  function buildHint(tags) {
+    if (!tags) return '';
+
+    const locality = firstTag(tags, [
+      'addr:suburb',
+      'addr:neighbourhood',
+      'addr:quarter',
+      'addr:city_district',
+      'addr:locality',
+      'is_in:suburb',
+      'addr:city',
+      'addr:state',
+    ]);
+
+    const road = firstTag(tags, [
+      'addr:street',
+      'addr:road',
+    ]);
+
+    if (locality && road && locality.toLowerCase() !== road.toLowerCase()) {
+      return `Near ${road}, ${locality}`;
+    }
+    if (locality) return `In ${locality}`;
+    if (road) return `Near ${road}`;
+    return '';
+  }
+
+  function firstTag(tags, keys) {
+    for (const key of keys) {
+      const val = tags[key];
+      if (typeof val === 'string' && val.trim()) return val.trim();
+    }
+    return '';
   }
 
   /**
@@ -137,6 +173,7 @@ const Overpass = (() => {
         type: 'Landmark',
         emoji: '📍',
         address: 'Your neighbourhood',
+        hint: 'In your local area',
         isFallback: true,
       };
     });
