@@ -6,9 +6,6 @@
     { "src": "css/**",     "use": "@vercel/static" },
     { "src": "js/**",      "use": "@vercel/static" }
   ],
-  "routes": [
-    { "src": "/(.*)", "dest": "/$1" }
-  ],
   "headers": [
     {
       "source": "/(.*)",
